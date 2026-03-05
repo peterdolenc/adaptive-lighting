@@ -295,10 +295,14 @@ class SunLightSettings:
             )
         return clamp(brightness, self.min_brightness, self.max_brightness)
 
-    def brightness_pct(self, dt: datetime.datetime, is_sleep: bool) -> float | None:
+    def brightness_pct(self, dt: datetime.datetime, is_sleep: bool, sun_position: float) -> float | None:
         """Calculate the brightness in %."""
         if is_sleep:
             return self.sleep_brightness
+        if self.adapt_until_sleep and sun_position < 0:
+            delta = abs(self.min_brightness - self.sleep_brightness)
+            ct = (delta * abs(1 + sun_position)) + self.sleep_brightness
+            return round(ct)
         assert self.brightness_mode in ("default", "linear", "tanh")
         if self.brightness_mode == "default":
             return self._brightness_pct_default(dt)
@@ -333,7 +337,7 @@ class SunLightSettings:
         rgb_color: tuple[int, int, int]
         # Variable `force_rgb_color` is needed for RGB color after sunset (if enabled)
         force_rgb_color = False
-        brightness_pct = self.brightness_pct(dt, is_sleep)
+        brightness_pct = self.brightness_pct(dt, is_sleep, sun_position)
         if is_sleep:
             color_temp_kelvin = self.sleep_color_temp
             rgb_color = self.sleep_rgb_color

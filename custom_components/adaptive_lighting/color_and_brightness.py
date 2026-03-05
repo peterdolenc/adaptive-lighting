@@ -174,18 +174,60 @@ class SunEvents:
         return events[i_now - 1 : i_now + 1]
 
     def sun_position(self, dt: datetime.datetime) -> float:
-        """Calculate the position of the sun, between [-1, 1]."""
+        """Calculate the position of the sun, between [-1, 1],
+        with flat night between 22:00–04:00.
+        """
         target_ts = dt.timestamp()
         (_, prev_ts), (next_event, next_ts) = self.prev_and_next_events(dt)
+
         h, x = (
             (prev_ts, next_ts)
             if next_event in (SunEvent.SUNSET, SunEvent.SUNRISE)
             else (next_ts, prev_ts)
         )
+
         # k = -1 between sunset and sunrise (sun below horizon)
         # k = 1 between sunrise and sunset (sun above horizon)
         k = 1 if next_event in (SunEvent.SUNSET, SunEvent.NOON) else -1
-        return k * (1 - ((target_ts - h) / (h - x)) ** 2)
+
+        # -----------------------------
+        # DAYTIME → keep original logic
+        # -----------------------------
+        if k > 0:
+            return k * (1 - ((target_ts - h) / (h - x)) ** 2)
+
+        # -----------------------------
+        # NIGHTTIME → new logic
+        # -----------------------------
+
+        sunset_ts = h
+        sunrise_ts = x
+
+        # Fixed boundaries
+        bedtime_ts = dt.replace(hour=22, minute=0, second=0).timestamp()
+        wake_ts = dt.replace(hour=4, minute=0, second=0).timestamp()
+
+        # If after midnight but before sunrise,
+        # bedtime belongs to previous day
+        if target_ts < sunrise_ts:
+            bedtime_ts -= 86400  # shift one day back
+
+        # Sunset → Bedtime
+        if sunset_ts <= target_ts < bedtime_ts:
+            t = (target_ts - sunset_ts) / (bedtime_ts - sunset_ts)
+            return -(t ** 2)
+
+        # Bedtime - wake time
+        if bedtime_ts <= target_ts < wake_ts:
+            return -1.0
+
+        # wake time → Sunrise
+        if wake_ts <= target_ts < sunrise_ts:
+            t = (target_ts - wake_ts) / (sunrise_ts - wake_ts)
+            return -(1 - t ** 2)
+
+        return -1.0
+
 
     def closest_event(
         self,
